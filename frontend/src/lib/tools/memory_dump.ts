@@ -52,7 +52,7 @@ class MemoryDumper {
     );
   }
 
-  private formatAddress(address: number): string {
+  public formatAddress(address: number): string {
     return `0x${address.toString(16).padStart(16, "0")}`;
   }
 
@@ -150,7 +150,9 @@ export async function dumpProcessMemory(
   protection: { r: number; w: number; x: number },
   progressRef: React.MutableRefObject<{
     setProgress: (progress: number) => void;
-  }>
+  }>,
+  startAddress?: number,
+  endAddress?: number
 ): Promise<{
   success: boolean;
   dumpBlob?: Blob;
@@ -160,6 +162,30 @@ export async function dumpProcessMemory(
   const updateProgress = (progress: number) => {
     progressRef.current.setProgress(Math.round(progress * 100));
   };
+
+  if (startAddress !== undefined && endAddress !== undefined) {
+    const processResponse = await dumper.memoryApi.openProcess(pid);
+    if (!processResponse.success) {
+      console.error("Failed to open process:", processResponse.message);
+      return { success: false };
+    }
+
+    const size = endAddress - startAddress;
+    const response = await dumper.memoryApi.readProcessMemory(
+      startAddress,
+      size
+    );
+
+    if (!response.success) {
+      updateProgress(1);
+      return { success: false };
+    }
+
+    const data = new Uint8Array(response.data);
+    const dumpBlob = new Blob([data], { type: "application/octet-stream" });
+
+    return { success: true, dumpBlob };
+  }
 
   const success = await dumper.dumpMemory(pid, protection, updateProgress);
 

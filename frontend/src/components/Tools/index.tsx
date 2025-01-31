@@ -28,6 +28,14 @@ export function Tools() {
   const [pointerMapMessage, setPointerMapMessage] = useState("");
   const [isPointerMapGenerating, setIsPointerMapGenerating] = useState(false);
 
+  const [regionDumpFormData, setRegionDumpFormData] = useState({
+    startAddress: "",
+    endAddress: "",
+  });
+  const [regionDumpMessage, setRegionDumpMessage] = useState("");
+  const [regionDumpProgress, setRegionDumpProgress] = useState(0);
+  const regionDumpProgressRef = useRef({ setProgress: setRegionDumpProgress });
+
   // Progress refs
   const ipaProgressRef = useRef({ setProgress: setIpaProgress });
   const memoryProgressRef = useRef({ setProgress: setMemoryProgress });
@@ -49,6 +57,60 @@ export function Tools() {
   useEffect(() => {
     memoryProgressRef.current.setProgress = setMemoryProgress;
   }, []);
+
+  useEffect(() => {
+    regionDumpProgressRef.current.setProgress = setRegionDumpProgress;
+  }, []);
+
+  const regionDump = async () => {
+    setRegionDumpProgress(0);
+    setRegionDumpMessage("");
+    try {
+      const startAddress = parseInt(regionDumpFormData.startAddress, 16);
+      const endAddress = parseInt(regionDumpFormData.endAddress, 16);
+
+      if (isNaN(startAddress) || isNaN(endAddress)) {
+        setRegionDumpMessage("Invalid address format");
+        return;
+      }
+      if (startAddress >= endAddress) {
+        setRegionDumpMessage("Start address must be less than end address");
+        return;
+      }
+
+      const result = await dumpProcessMemory(
+        ipAddress,
+        openProcessId,
+        { r: 2, w: 1, x: 1 }, // すべてのメモリ領域
+        regionDumpProgressRef,
+        startAddress,
+        endAddress
+      );
+
+      if (result.success && result.dumpBlob) {
+        const url = window.URL.createObjectURL(result.dumpBlob);
+        const link = document.createElement("a");
+        link.href = url;
+        const fileName = `region_dump_${startAddress.toString(
+          16
+        )}-${endAddress.toString(16)}.bin`;
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        setRegionDumpMessage("Region dump completed successfully!");
+      } else {
+        setRegionDumpMessage("Failed to dump region. Please try again.");
+      }
+    } catch (error) {
+      setRegionDumpMessage(
+        `Error occurred: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  };
 
   const generatePointermap = async () => {
     setPointerMapMessage("");
@@ -320,6 +382,78 @@ export function Tools() {
               disabled={memoryProgress > 0 && memoryProgress < 100}
             >
               Dump Memory
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card className="w-full max-w-md mb-6">
+          <CardHeader>
+            <CardTitle className="text-2xl">Region Memory Dump</CardTitle>
+            <CardDescription>
+              Dump memory within specified address range.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col space-y-4">
+              <div className="flex flex-col space-y-2">
+                <Label>Start Address (hex)</Label>
+                <input
+                  type="text"
+                  className="px-3 py-2 border rounded-md dark:bg-gray-800"
+                  placeholder="Enter start address (e.g., 0x12345678)"
+                  value={regionDumpFormData.startAddress}
+                  onChange={(e) =>
+                    setRegionDumpFormData({
+                      ...regionDumpFormData,
+                      startAddress: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="flex flex-col space-y-2">
+                <Label>End Address (hex)</Label>
+                <input
+                  type="text"
+                  className="px-3 py-2 border rounded-md dark:bg-gray-800"
+                  placeholder="Enter end address (e.g., 0x12345678)"
+                  value={regionDumpFormData.endAddress}
+                  onChange={(e) =>
+                    setRegionDumpFormData({
+                      ...regionDumpFormData,
+                      endAddress: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              {regionDumpProgress > 0 && (
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4 dark:bg-gray-700">
+                  <div
+                    className="bg-blue-600 h-2.5 rounded-full"
+                    style={{ width: `${regionDumpProgress}%` }}
+                  ></div>
+                </div>
+              )}
+              {regionDumpMessage && (
+                <div
+                  className={`mt-4 p-2 rounded ${
+                    regionDumpMessage.includes("Failed") ||
+                    regionDumpMessage.includes("Error")
+                      ? "bg-red-100 text-red-700"
+                      : "bg-green-100 text-green-700"
+                  }`}
+                >
+                  {regionDumpMessage}
+                </div>
+              )}
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button
+              className="w-full"
+              onClick={regionDump}
+              disabled={regionDumpProgress > 0 && regionDumpProgress < 100}
+            >
+              Dump Region
             </Button>
           </CardFooter>
         </Card>
