@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "NexDbg",
+  title: "memory-server",
   description: "Next Generation Browser-based Process Memory Analyser",
 };
 

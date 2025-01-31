@@ -9,7 +9,7 @@ export function Footer() {
         </Link>
       </div>
       <p className="text-xs text-gray-500 dark:text-gray-400 sm:ml-auto">
-        © 2024 DoranekoSystems
+        © 2025 DoranekoSystems
       </p>
     </footer>
   );
