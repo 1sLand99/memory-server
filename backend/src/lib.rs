@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use ctor::ctor;
 use std::net::IpAddr;
 use std::thread;

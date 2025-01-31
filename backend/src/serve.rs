@@ -1,4 +1,3 @@
-#[recursion_limit = "1024"]
 use include_dir::{include_dir, Dir};
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
@@ -23,6 +22,7 @@ pub async fn serve(mode: i32, host: IpAddr, port: u16) {
         .map(|tail: Tail| tail.as_str().to_string())
         .and_then(serve_static);
 
+    // Process and Module Routes
     let enum_process = warp::path!("processes")
         .and(warp::get())
         .and_then(api::enumerate_process_handler);
@@ -40,6 +40,15 @@ pub async fn serve(mode: i32, host: IpAddr, port: u16) {
             api::open_process_handler(pid_state, open_process).await
         });
 
+    let change_process_state = warp::path!("process")
+        .and(warp::put())
+        .and(warp::body::json())
+        .and(api::with_state(pid_state.clone()))
+        .and_then(|state_request, pid_state| async move {
+            api::change_process_state_handler(pid_state, state_request).await
+        });
+
+    // Memory Operation Routes
     let read_memory = warp::path!("memory")
         .and(warp::get())
         .and(warp::query::<request::ReadMemoryRequest>())
@@ -65,6 +74,7 @@ pub async fn serve(mode: i32, host: IpAddr, port: u16) {
             api::read_memory_multiple_handler(pid_state, read_memory_requests).await
         });
 
+    // Memory Analysis Routes
     let memory_scan = warp::path!("memoryscan")
         .and(warp::post())
         .and(warp::body::json())
@@ -86,37 +96,7 @@ pub async fn serve(mode: i32, host: IpAddr, port: u16) {
         .and(api::with_state(pid_state.clone()))
         .and_then(|pid_state| async move { api::enumerate_regions_handler(pid_state).await });
 
-    let resolve_addr = warp::path!("resolveaddr")
-        .and(warp::get())
-        .and(warp::query::<request::ResolveAddrRequest>())
-        .and(api::with_state(pid_state.clone()))
-        .and_then(|resolve_addr_request, pid_state| async move {
-            api::resolve_addr_handler(pid_state, resolve_addr_request).await
-        });
-
-    let explore_directory = warp::path!("directory")
-        .and(warp::get())
-        .and(warp::query::<request::ExploreDirectoryRequest>())
-        .and_then(|explore_directory_request| async move {
-            api::explore_directory_handler(explore_directory_request).await
-        });
-
-    let read_file = warp::path!("file")
-        .and(warp::get())
-        .and(warp::query::<request::ReadFileRequest>())
-        .and_then(
-            |read_file_request| async move { api::read_file_handler(read_file_request).await },
-        );
-
-    let get_app_info = warp::path!("appinfo")
-        .and(warp::get())
-        .and(api::with_state(pid_state.clone()))
-        .and_then(|pid_state| async move { api::get_app_info_handler(pid_state).await });
-
-    let server_info = warp::path!("serverinfo")
-        .and(warp::get())
-        .and_then(api::server_info_handler);
-
+    // Debug Routes
     let set_watchpoint = warp::path!("watchpoint")
         .and(warp::post())
         .and(warp::body::json())
@@ -149,17 +129,42 @@ pub async fn serve(mode: i32, host: IpAddr, port: u16) {
             api::remove_breakpoint_handler(pid_state, remove_breakpoint_request).await
         });
 
+    // Utility Routes
+    let resolve_addr = warp::path!("resolveaddr")
+        .and(warp::get())
+        .and(warp::query::<request::ResolveAddrRequest>())
+        .and(api::with_state(pid_state.clone()))
+        .and_then(|resolve_addr_request, pid_state| async move {
+            api::resolve_addr_handler(pid_state, resolve_addr_request).await
+        });
+
+    let explore_directory = warp::path!("directory")
+        .and(warp::get())
+        .and(warp::query::<request::ExploreDirectoryRequest>())
+        .and_then(|explore_directory_request| async move {
+            api::explore_directory_handler(explore_directory_request).await
+        });
+
+    let read_file = warp::path!("file")
+        .and(warp::get())
+        .and(warp::query::<request::ReadFileRequest>())
+        .and_then(
+            |read_file_request| async move { api::read_file_handler(read_file_request).await },
+        );
+
+    // Info Routes
+    let get_app_info = warp::path!("appinfo")
+        .and(warp::get())
+        .and(api::with_state(pid_state.clone()))
+        .and_then(|pid_state| async move { api::get_app_info_handler(pid_state).await });
+
+    let server_info = warp::path!("serverinfo")
+        .and(warp::get())
+        .and_then(api::server_info_handler);
+
     let get_exception_info = warp::path!("exceptioninfo")
         .and(warp::get())
         .and_then(api::get_exception_info_handler);
-
-    let change_process_state = warp::path!("process")
-        .and(warp::put())
-        .and(warp::body::json())
-        .and(api::with_state(pid_state.clone()))
-        .and_then(|state_request, pid_state| async move {
-            api::change_process_state_handler(pid_state, state_request).await
-        });
 
     let pointermap_generate = warp::path!("pointermap")
         .and(warp::post())
@@ -169,27 +174,35 @@ pub async fn serve(mode: i32, host: IpAddr, port: u16) {
             api::pointermap_generate_handler(pid_state, request).await
         });
 
-    let routes = open_process
-        .or(read_memory)
-        .or(read_memory_multiple)
-        .or(write_memory)
-        .or(memory_scan)
-        .or(memory_filter)
-        .or(enum_regions)
-        .or(enum_process)
+    // Group routes by functionality
+    let process_routes = enum_process
         .or(enum_module)
-        .or(resolve_addr)
-        .or(explore_directory)
-        .or(read_file)
-        .or(get_app_info)
-        .or(server_info)
-        .or(set_watchpoint)
+        .or(open_process)
+        .or(change_process_state);
+
+    let memory_operation_routes = read_memory.or(write_memory).or(read_memory_multiple);
+
+    let memory_analysis_routes = memory_scan.or(memory_filter).or(enum_regions);
+
+    let debug_routes = set_watchpoint
         .or(remove_watchpoint)
         .or(set_breakpoint)
-        .or(remove_breakpoint)
+        .or(remove_breakpoint);
+
+    let utility_routes = resolve_addr.or(explore_directory).or(read_file);
+
+    let info_routes = get_app_info
+        .or(server_info)
         .or(get_exception_info)
-        .or(change_process_state)
-        .or(pointermap_generate)
+        .or(pointermap_generate);
+
+    // Combine all route groups
+    let routes = process_routes
+        .or(memory_operation_routes)
+        .or(memory_analysis_routes)
+        .or(debug_routes)
+        .or(utility_routes)
+        .or(info_routes)
         .or(static_files)
         .with(cors)
         .with(warp::log::custom(logger::http_log));
